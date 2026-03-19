@@ -1,0 +1,67 @@
+# Variables de entorno
+.env
+
+# Sesión de Telegram
+*.session
+telegram_session*
+
+# Carpeta de descargas
+downloads/
+!downloads/.gitkeep
+
+# Archivos temporales
+*.tmp
+*.temp
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Videos descargados (opcional - descomenta si quieres ignorar videos)
+# *.mp4
+# *.mov
+# *.avi
+# *.mkv
