@@ -8,12 +8,16 @@ import asyncio
 import sys
 import signal
 from typing import List, Dict, Any, Optional
+from rich.console import Console
+from rich.prompt import Prompt
 
 # Importar módulos personalizados
 from config import Config
 from telegram_client import TelegramManager
 from ui import UserInterface
 from downloader import VideoDownloader
+
+console = Console()
 
 class DowngramCLI:
     """Clase principal que coordina toda la aplicación"""
@@ -121,36 +125,92 @@ class DowngramCLI:
                 # 4. Búsqueda de videos
                 keyword = self.ui.get_search_keyword()
                 
-                # 5. Realizar búsqueda
-                videos = await self.telegram_manager.search_videos(
-                    entities=selected_entities,
-                    keyword=keyword,
-                    limit=self.config.max_search_results
-                )
+                # 5. Realizar búsqueda con paginación
+                current_page = 0
+                all_selected_videos = []
+                current_search_result = None
                 
-                # 6. Mostrar resultados y selección
-                selected_video_indices = self.ui.show_search_results(videos)
+                while True:
+                    # Realizar búsqueda para la página actual
+                    search_result = await self.telegram_manager.search_videos(
+                        entities=selected_entities,
+                        keyword=keyword,
+                        limit=self.config.max_search_results,
+                        offset=current_page
+                    )
+                    
+                    current_search_result = search_result
+                    
+                    # 6. Mostrar resultados y selección
+                    selected_video_indices, navigation_action = self.ui.show_search_results(search_result)
+                    
+                    # Manejar navegación
+                    if navigation_action == 'next':
+                        current_page += 1
+                        continue
+                    elif navigation_action == 'prev':
+                        current_page = max(0, current_page - 1)
+                        continue
+                    elif navigation_action and navigation_action.startswith('page_'):
+                        target_page = int(navigation_action.split('_')[1]) - 1
+                        current_page = target_page
+                        continue
+                    
+                    # Si hay videos seleccionados, agregarlos a la lista
+                    if selected_video_indices:
+                        # Convertir índices locales a videos completos
+                        page_videos = search_result['videos']
+                        for idx in selected_video_indices:
+                            all_selected_videos.append(page_videos[idx])
+                        
+                        # Preguntar si desea seleccionar más videos de otras páginas
+                        if search_result['total_pages'] > 1:
+                            if self.ui.confirm_action("¿Deseas seleccionar videos de otras páginas?"):
+                                # Permitir navegar a otras páginas
+                                nav_choice = Prompt.ask(
+                                    "📍 Navegar a: [next/prev/page N/finish]", 
+                                    default="finish"
+                                ).lower().strip()
+                                
+                                if nav_choice == 'next' and current_page < search_result['total_pages'] - 1:
+                                    current_page += 1
+                                    continue
+                                elif nav_choice == 'prev' and current_page > 0:
+                                    current_page -= 1
+                                    continue
+                                elif nav_choice.startswith('page '):
+                                    try:
+                                        page_num = int(nav_choice.split(' ')[1]) - 1
+                                        if 0 <= page_num < search_result['total_pages']:
+                                            current_page = page_num
+                                            continue
+                                    except (ValueError, IndexError):
+                                        console.print("[red]❌ Página inválida[/red]")
+                                # Si no quiere navegar más, salir del bucle
+                    
+                    # Salir del bucle de paginación
+                    break
                 
-                if not selected_video_indices:
+                if not all_selected_videos:
                     if not self.ui.confirm_action("¿Deseas realizar otra búsqueda?"):
                         break
                     else:
                         continue
                 
-                # 7. Descargar videos
+                # Descargar videos seleccionados
                 download_results = await self.downloader.download_videos(
                     self.telegram_manager,
-                    videos,
-                    selected_video_indices
+                    all_selected_videos,
+                    list(range(len(all_selected_videos)))  # Todos los videos seleccionados
                 )
                 
-                # 8. Mostrar resumen final
+                # Mostrar resumen final
                 self.ui.show_completion_message(
                     download_results['downloaded'],
-                    len(selected_video_indices)
+                    len(all_selected_videos)
                 )
                 
-                # 9. Preguntar si desea continuar
+                # Preguntar si desea continuar
                 if not self.ui.confirm_action("¿Deseas realizar otra búsqueda?"):
                     break
                     

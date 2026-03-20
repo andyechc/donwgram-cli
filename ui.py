@@ -13,6 +13,7 @@ from rich.text import Text
 from rich.layout import Layout
 import os
 import time
+from datetime import datetime, timedelta
 
 console = Console()
 
@@ -131,79 +132,156 @@ class UserInterface:
                 console.print("[red]❌ Debes ingresar una palabra clave[/red]")
     
     @staticmethod
-    def show_search_results(videos: List[Dict[str, Any]]) -> List[int]:
-        """Muestra los resultados de búsqueda en una tabla y permite selección"""
+    def show_search_results(search_result: Dict[str, Any]) -> tuple[List[int], bool]:
+        """Muestra los resultados de búsqueda con paginación y permite selección"""
+        videos = search_result['videos']
+        current_page = search_result['current_page']
+        total_pages = search_result['total_pages']
+        total_found = search_result['total_found']
+        has_more = search_result['has_more']
+        
         if not videos:
             console.print("[yellow]⚠️  No se encontraron videos con esa palabra clave[/yellow]")
-            return []
+            return [], False
         
-        # Crear tabla de resultados
-        table = Table(title=f"🎥 Resultados de Búsqueda ({len(videos)} videos)")
+        # Crear tabla de resultados con información de paginación
+        table = Table(title=f"🎥 Resultados de Búsqueda - Página {current_page}/{total_pages} (Total: {total_found} videos)")
         table.add_column("ID", style="cyan", width=4)
-        table.add_column("Fecha", style="blue", width=16)
-        table.add_column("Canal", style="magenta", width=25)
-        table.add_column("Descripción", style="white", width=40)
-        table.add_column("Duración", style="green", width=8)
+        table.add_column("Fecha", style="blue", width=20)
+        table.add_column("Canal", style="magenta", width=20)
+        table.add_column("Descripción", style="white", width=85)
         table.add_column("Tamaño", style="yellow", width=10)
         
         # Agregar filas
         for i, video in enumerate(videos, 1):
-            # Formatear duración
-            duration = video['duration']
-            if duration and duration != 'N/A':
-                minutes = duration // 60
-                seconds = duration % 60
-                duration_text = f"{minutes}:{seconds:02d}"
-            else:
-                duration_text = "N/A"
-            
             # Formatear tamaño
             size = video['file_size']
-            if size and size > 0:
-                size_text = UserInterface._format_bytes(size)
+            if size and isinstance(size, (int, float)) and size > 0:
+                size_text = UserInterface._format_bytes(int(size))
             else:
                 size_text = "N/A"
             
-            # Truncar descripción si es muy larga
-            description = video['message'][:37] + "..." if len(video['message']) > 37 else video['message']
+            # Formatear fecha a lenguaje humano
+            date_text = UserInterface._format_human_date(video['date'])
+            
+            # Mostrar descripción completa (sin truncar)
+            description = video['message'] or 'Sin descripción'
+            
+            # Truncar canal si es muy largo
+            channel_name = video['channel_title']
+            if len(channel_name) > 18:
+                channel_name = channel_name[:18] + "..."
             
             table.add_row(
                 str(i),
-                video['date'],
-                video['channel_title'][:22] + "..." if len(video['channel_title']) > 22 else video['channel_title'],
+                date_text,
+                channel_name,
                 description,
-                duration_text,
                 size_text
             )
         
         console.print(table)
         
-        # Selección de videos
-        console.print("\n[bold]📥 Selección de Videos para Descargar[/bold]")
+        # Mostrar información de paginación
+        console.print(f"\n[bold]📄 Información de Página[/bold]")
+        console.print(f"Página actual: {current_page}/{total_pages}")
+        console.print(f"Videos en esta página: {len(videos)}")
+        console.print(f"Total de videos encontrados: {total_found}")
+        
+        # Selección de videos con opciones de paginación
+        console.print(f"\n[bold]📥 Selección de Videos para Descargar[/bold]")
         console.print("[dim]Ingresa los números de los videos que deseas descargar[/dim]")
-        console.print("[dim]Ejemplo: 1,3,5 o 'all' para descargar todos[/dim]")
+        console.print("[dim]Opciones especiales:[/dim]")
+        console.print("[dim]  • 'all' - descargar todos los videos de esta página[/dim]")
+        console.print("[dim]  • 'next' - ver siguiente página[/dim]")
+        console.print("[dim]  • 'prev' - ver página anterior[/dim]")
+        console.print("[dim]  • 'page N' - ir a página específica[/dim]")
         
         while True:
             try:
-                selection_input = Prompt.ask("🎯 Selecciona videos", default="")
+                selection_input = Prompt.ask("🎯 Selecciona videos o navega", default="")
                 
                 if not selection_input:
-                    return []
+                    return [], False
                 
-                if selection_input.lower() == "all":
-                    return list(range(len(videos)))
+                selection_input = selection_input.lower().strip()
                 
+                # Opciones de navegación
+                if selection_input == 'next' and has_more:
+                    return [], 'next'
+                elif selection_input == 'next' and not has_more:
+                    console.print("[yellow]⚠️  No hay más páginas disponibles[/yellow]")
+                    continue
+                elif selection_input == 'prev' and current_page > 1:
+                    return [], 'prev'
+                elif selection_input == 'prev' and current_page == 1:
+                    console.print("[yellow]⚠️  Ya estás en la primera página[/yellow]")
+                    continue
+                elif selection_input.startswith('page '):
+                    try:
+                        page_num = int(selection_input.split(' ')[1])
+                        if 1 <= page_num <= total_pages:
+                            return [], f'page_{page_num}'
+                        else:
+                            console.print(f"[red]❌ Página inválida. Rango: 1-{total_pages}[/red]")
+                    except (ValueError, IndexError):
+                        console.print("[red]❌ Formato inválido. Usa: page N[/red]")
+                    continue
+                elif selection_input == 'all':
+                    return list(range(len(videos))), False
+                
+                # Selección normal de videos
                 selected_indices = UserInterface._parse_selection(selection_input, len(videos))
                 
                 if selected_indices:
                     console.print(f"[green]✅ Seleccionados {len(selected_indices)} videos para descargar[/green]")
-                    return selected_indices
+                    return selected_indices, False
                 else:
                     console.print("[red]❌ Selección inválida. Intenta nuevamente[/red]")
                     
             except KeyboardInterrupt:
                 console.print("\n[yellow]⚠️  Operación cancelada[/yellow]")
-                return []
+                return [], False
+    
+    @staticmethod
+    def _format_human_date(date_str: str) -> str:
+        """Formatea fecha a lenguaje humano (hace 2 horas, ayer, etc.)"""
+        try:
+            # Parsear la fecha del formato YYYY-MM-DD HH:MM
+            video_date = datetime.strptime(date_str, '%Y-%m-%d %H:%M')
+            now = datetime.now()
+            
+            # Calcular diferencia
+            diff = now - video_date
+            
+            if diff < timedelta(minutes=1):
+                return "Ahora"
+            elif diff < timedelta(hours=1):
+                minutes = int(diff.total_seconds() / 60)
+                return f"Hace {minutes} min"
+            elif diff < timedelta(hours=24):
+                hours = int(diff.total_seconds() / 3600)
+                return f"Hace {hours} h"
+            elif diff < timedelta(days=2):
+                if video_date.date() == now.date():
+                    return "Hoy"
+                else:
+                    return "Ayer"
+            elif diff < timedelta(days=7):
+                days = diff.days
+                return f"Hace {days} días"
+            elif diff < timedelta(days=30):
+                weeks = diff.days // 7
+                return f"Hace {weeks} sem"
+            elif diff < timedelta(days=365):
+                months = diff.days // 30
+                return f"Hace {months} mes"
+            else:
+                years = diff.days // 365
+                return f"Hace {years} año" if years == 1 else f"Hace {years} años"
+                
+        except Exception:
+            return date_str  # Si hay error, mostrar fecha original
     
     @staticmethod
     def _format_bytes(bytes_value: int) -> str:

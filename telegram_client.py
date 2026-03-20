@@ -94,12 +94,14 @@ class TelegramManager:
             console.print(f"[red]❌ Error obteniendo diálogos: {e}[/red]")
             return []
     
-    async def search_videos(self, entities: List[Any], keyword: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """Busca videos en las entidades especificadas"""
+    async def search_videos(self, entities: List[Any], keyword: str, limit: int = 20, offset: int = 0) -> Dict[str, Any]:
+        """Busca videos en las entidades especificadas con paginación (solo videos descargables)"""
         if not self.is_connected or not self.client:
             raise RuntimeError("No hay conexión activa con Telegram")
         
         videos = []
+        total_found = 0
+        skipped_count = 0
         
         with Progress(
             SpinnerColumn(),
@@ -110,30 +112,63 @@ class TelegramManager:
             
             for entity in entities:
                 try:
-                    # Buscar mensajes en la entidad
+                    # Buscar mensajes en la entidad sin límite para buscar todo el historial
+                    entity_videos = []
                     async for message in self.client.iter_messages(
                         entity=entity,
                         search=keyword,
-                        limit=limit // len(entities),  # Distribuir límite entre entidades
+                        limit=None,  # Sin límite para buscar todo el historial
                         filter=None
                     ):
-                        # Verificar si el mensaje contiene video
-                        if message.video:
+                        # Verificar si el mensaje contiene video y es descargable
+                        if message.video and message.media:
                             # Obtener información del video
                             video = message.video
                             
-                            videos.append({
-                                'id': message.id,
-                                'date': message.date.strftime('%Y-%m-%d %H:%M'),
-                                'channel_title': getattr(entity, 'title', 'Desconocido'),
-                                'message': message.message or 'Sin descripción',
-                                'duration': getattr(video, 'duration', 'N/A'),
-                                'file_size': getattr(video, 'file_size', 0),
-                                'width': getattr(video, 'width', 0),
-                                'height': getattr(video, 'height', 0),
-                                'message_obj': message,
-                                'entity': entity
-                            })
+                            # Extraer atributos del video con más métodos
+                            duration = getattr(video, 'duration', 0)
+                            file_size = getattr(video, 'file_size', 0)
+                            width = getattr(video, 'width', 0)
+                            height = getattr(video, 'height', 0)
+                            mime_type = getattr(video, 'mime_type', '')
+                            
+                            # Intentar obtener tamaño de otras formas
+                            if file_size == 0 and hasattr(video, 'size'):
+                                file_size = getattr(video, 'size', 0)
+                            
+                            # Criterios más flexibles para considerar un video válido
+                            # Aceptamos si tiene ALGUNA de estas características:
+                            is_valid_video = (
+                                (duration > 0) or  # Tiene duración
+                                (file_size > 0) or  # Tiene tamaño
+                                (width > 0 and height > 0) or  # Tiene resolución
+                                (mime_type and 'video' in mime_type.lower())  # MIME type correcto (solo esto ya es suficiente)
+                            )
+                            
+                            if is_valid_video:
+                                video_data = {
+                                    'id': message.id,
+                                    'date': message.date.strftime('%Y-%m-%d %H:%M'),
+                                    'channel_title': getattr(entity, 'title', 'Desconocido'),
+                                    'message': message.message or 'Sin descripción',
+                                    'duration': duration,
+                                    'file_size': file_size,
+                                    'width': width,
+                                    'height': height,
+                                    'mime_type': mime_type,
+                                    'message_obj': message,
+                                    'entity': entity
+                                }
+                                entity_videos.append(video_data)
+                            else:
+                                skipped_count += 1
+                    
+                    total_found += len(entity_videos)
+                    videos.extend(entity_videos)
+                    
+                    # Mostrar información de depuración
+                    if skipped_count > 0:
+                        console.print(f"[dim]ℹ️  {getattr(entity, 'title', 'entidad')}: {len(entity_videos)} videos válidos, {skipped_count} omitidos[/dim]")
                 
                 except FloodWaitError as e:
                     console.print(f"[yellow]⏰ Esperando {e.seconds} segundos por límite de API...[/yellow]")
@@ -143,9 +178,31 @@ class TelegramManager:
                 
                 progress.advance(task)
         
-        return videos[:limit]  # Limitar resultados
+        # Ordenar resultados por fecha (más recientes primero)
+        videos.sort(key=lambda x: x['date'], reverse=True)
+        
+        # Aplicar paginación
+        page_size = 50
+        start_idx = offset * page_size
+        end_idx = start_idx + page_size
+        
+        paginated_videos = videos[start_idx:end_idx]
+        has_more = end_idx < len(videos)
+        
+        # Mostrar resumen de búsqueda
+        if skipped_count > 0:
+            console.print(f"[yellow]ℹ️  Se omitieron {skipped_count} mensajes sin video válido[/yellow]")
+        
+        return {
+            'videos': paginated_videos,
+            'total_found': len(videos),
+            'current_page': offset + 1,
+            'total_pages': (len(videos) + page_size - 1) // page_size,
+            'has_more': has_more,
+            'page_size': page_size
+        }
     
-    async def download_video(self, message: Any, entity: Any, file_path: str) -> bool:
+    async def download_video(self, message: Any, entity: Any, file_path: str, progress_callback=None) -> bool:
         """Descarga un video específico"""
         if not self.is_connected or not self.client:
             raise RuntimeError("No hay conexión activa con Telegram")
@@ -155,7 +212,7 @@ class TelegramManager:
             await self.client.download_media(
                 message=message,
                 file=file_path,
-                progress_callback=self._download_progress_callback
+                progress_callback=progress_callback
             )
             return True
             
@@ -165,13 +222,6 @@ class TelegramManager:
         except Exception as e:
             console.print(f"[red]❌ Error descargando video: {e}[/red]")
             return False
-    
-    def _download_progress_callback(self, current: int, total: int):
-        """Callback para mostrar progreso de descarga"""
-        if total > 0:
-            percentage = (current / total) * 100
-            # Usar carriage return para actualizar la misma línea
-            print(f"\r📥 Descargando: {percentage:.1f}% ({current:,}/{total:,} bytes)", end='', flush=True)
     
     async def disconnect(self):
         """Cierra la conexión con Telegram"""
