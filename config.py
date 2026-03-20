@@ -22,7 +22,7 @@ class Config:
         # Configuración adicional
         self.session_name = "telegram_session"
         self.downloads_folder = "downloads"
-        self.max_search_results = 20
+        self.max_search_results = 100  # Aumentado para permitir más resultados de búsqueda
         
     def _get_required_env(self, key: str) -> str:
         """Obtiene una variable de entorno requerida, lanza excepción si no existe"""

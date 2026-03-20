@@ -88,14 +88,17 @@ class VideoDownloader:
                     continue
                 
                 # Crear tarea de progreso
+                file_size = video.get('file_size', 0)
+                # Usar 0 como total inicial, se actualizará cuando el callback proporcione el tamaño real
                 task_id = progress.add_task(
                     f"📹 {filename[:50]}...",
-                    total=video.get('file_size', 0)
+                    total=0  # Total inicial, se actualizará dinámicamente
                 )
                 tasks[task_id] = {
                     'video': video,
                     'file_path': file_path,
-                    'filename': filename
+                    'filename': filename,
+                    'actual_size': 0  # Almacenará el tamaño real cuando se conozca
                 }
             
             # Descargar videos
@@ -120,25 +123,39 @@ class VideoDownloader:
     async def _download_single_video(self, telegram_manager, progress, task_id: int, video: Dict[str, Any], file_path: Path, filename: str):
         """Descarga un video individual con actualización de progreso"""
         try:
+            # Variable para almacenar el tamaño real
+            actual_size = [0]  # Usar lista para poder modificar en el callback
+            
             # Callback para actualizar progreso
             def progress_callback(current: int, total: int):
+                # Si recibimos un tamaño total válido y aún no hemos establecido el total
+                if total > 0 and progress.tasks[task_id].total == 0:
+                    progress.update(task_id, total=total)
+                    actual_size[0] = total
+                
+                # Actualizar progreso
                 if total > 0:
                     progress.update(task_id, completed=current)
+                elif current > 0 and actual_size[0] > 0:
+                    progress.update(task_id, completed=min(current, actual_size[0]))
             
             # Descargar video usando el cliente de Telegram
             success = await telegram_manager.download_video(
                 message=video['message_obj'],
                 entity=video['entity'],
-                file_path=str(file_path)
+                file_path=str(file_path),
+                progress_callback=progress_callback
             )
             
             if success:
                 # Actualizar progreso al 100%
-                file_size = video.get('file_size', 0)
-                if file_size > 0:
-                    progress.update(task_id, completed=file_size)
+                if actual_size[0] > 0:
+                    progress.update(task_id, completed=actual_size[0])
                 else:
-                    progress.update(task_id, completed=progress.tasks[task_id].total or 100)
+                    # Si nunca obtuvimos el tamaño real, actualizar con el progreso actual
+                    current_progress = progress.tasks[task_id].completed
+                    if current_progress > 0:
+                        progress.update(task_id, total=current_progress, completed=current_progress)
                 
                 self.downloaded_count += 1
                 console.print(f"[green]✅ Descargado: {filename}[/green]")
@@ -153,19 +170,23 @@ class VideoDownloader:
             progress.update(task_id, completed=0)
     
     def _generate_filename(self, video: Dict[str, Any]) -> str:
-        """Genera un nombre de archivo descriptivo para el video"""
+        """Genera un nombre de archivo basado en la descripción del video"""
         # Obtener información básica
         video_id = video['id']
-        channel_name = video['channel_title']
         message_text = video['message'] or "video"
-        date = video['date'].replace(':', '-').replace(' ', '_')
         
-        # Sanitizar nombres
-        safe_channel = self.sanitize_filename(channel_name)[:30]
-        safe_message = self.sanitize_filename(message_text)[:40]
+        # Sanitizar y usar la descripción como nombre principal
+        safe_message = self.sanitize_filename(message_text)
         
-        # Generar nombre de archivo
-        filename = f"{date}_{safe_channel}_{video_id}_{safe_message}.mp4"
+        # Si la descripción está vacía o es muy corta, usar el ID
+        if len(safe_message.strip()) < 3:
+            safe_message = f"video_{video_id}"
+        
+        # Limitar longitud para evitar nombres muy largos
+        safe_message = safe_message[:80]
+        
+        # Generar nombre de archivo basado en la descripción
+        filename = f"{safe_message}.mp4"
         
         return filename
     
