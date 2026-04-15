@@ -157,9 +157,9 @@ class UserInterface:
         # Crear tabla de resultados con información de paginación
         table = Table(title=f"🎥 Resultados de Búsqueda - Página {current_page}/{total_pages} (Total: {total_found} videos)")
         table.add_column("ID", style="cyan", width=4)
-        table.add_column("Fecha", style="blue", width=20)
-        table.add_column("Canal", style="magenta", width=20)
-        table.add_column("Descripción", style="white", width=85)
+        table.add_column("Fecha", style="blue", width=12)
+        table.add_column("Canal", style="magenta", width=15)
+        table.add_column("Descripción", style="white", overflow="fold")
         table.add_column("Tamaño", style="yellow", width=10)
         
         # Agregar filas
