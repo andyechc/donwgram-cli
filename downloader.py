@@ -83,7 +83,23 @@ class VideoDownloader:
                 
                 # Verificar si el archivo ya existe
                 if file_path.exists():
-                    console.print(f"[yellow]⚠️  El archivo ya existe: {filename}[/yellow]")
+                    # Crear tarea de progreso gris para archivo existente (pendiente/saltado)
+                    media_type = media.get('media_type', 'video')
+                    if media_type == 'audio':
+                        icon = "🎵"
+                    elif media_type == 'voice':
+                        icon = "🎤"
+                    else:
+                        icon = "📹"
+                    
+                    # Obtener tamaño del archivo existente para la barra
+                    existing_size = file_path.stat().st_size if file_path.exists() else 0
+                    
+                    task_id = progress.add_task(
+                        f"[dim]{icon} {filename[:50]}... (ya existe)[/dim]",
+                        total=existing_size if existing_size > 0 else 1,
+                        completed=existing_size if existing_size > 0 else 1
+                    )
                     self.downloaded_count += 1
                     continue
                 
