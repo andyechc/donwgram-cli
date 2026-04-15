@@ -175,8 +175,12 @@ class UserInterface:
             # Formatear fecha a lenguaje humano
             date_text = UserInterface._format_human_date(item['date'])
             
-            # Mostrar descripción completa (sin truncar)
-            description = item['message'] or 'Sin descripción'
+            # Mostrar descripción: para audio usar título si está disponible, sino usar mensaje
+            media_type = item.get('media_type', 'video')
+            if media_type == 'audio' and item.get('title'):
+                description = item['title']
+            else:
+                description = item['message'] or 'Sin descripción'
             
             # Truncar canal si es muy largo
             channel_name = item['channel_title']

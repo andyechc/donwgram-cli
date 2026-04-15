@@ -177,11 +177,33 @@ class TelegramManager:
                                 )
                             
                             if is_valid_media:
+                                # Extraer título para archivos de audio
+                                title = None
+                                performer = None
+                                if media_type == 'audio' and hasattr(media_info, 'attributes'):
+                                    for attr in media_info.attributes:
+                                        if hasattr(attr, 'title') and attr.title:
+                                            title = attr.title
+                                        if hasattr(attr, 'performer') and attr.performer:
+                                            performer = attr.performer
+                                
+                                # Construir título completo para audio (artista - título)
+                                if media_type == 'audio' and (title or performer):
+                                    if performer and title:
+                                        audio_title = f"{performer} - {title}"
+                                    elif title:
+                                        audio_title = title
+                                    else:
+                                        audio_title = performer
+                                else:
+                                    audio_title = None
+                                
                                 media_data = {
                                     'id': message.id,
                                     'date': message.date.strftime('%Y-%m-%d %H:%M'),
                                     'channel_title': getattr(entity, 'title', getattr(entity, 'first_name', 'Desconocido')),
                                     'message': message.message or 'Sin descripción',
+                                    'title': audio_title,  # Título del archivo (para audio)
                                     'duration': duration,
                                     'file_size': file_size,
                                     'width': width,
