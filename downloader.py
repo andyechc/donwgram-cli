@@ -182,6 +182,7 @@ class VideoDownloader:
         # Obtener información básica
         media_id = media['id']
         message_text = media['message']
+        title = media.get('title')  # Título para archivos de audio
         media_type = media.get('media_type', 'video')
         mime_type = media.get('mime_type', '')
         
@@ -230,10 +231,14 @@ class VideoDownloader:
                 extension = 'mp4'
             default_name = "video"
         
-        # Sanitizar y usar la descripción como nombre principal
-        safe_message = self.sanitize_filename(message_text) if message_text else ""
+        # Para audio, usar el título (artista - canción) si está disponible
+        if media_type == 'audio' and title:
+            safe_message = self.sanitize_filename(title)
+        else:
+            # Sanitizar y usar la descripción como nombre principal
+            safe_message = self.sanitize_filename(message_text) if message_text else ""
         
-        # Si la descripción está vacía o es muy corta, usar el tipo + ID
+        # Si el nombre está vacío o es muy corto, usar el tipo + ID
         if len(safe_message.strip()) < 3:
             safe_message = f"{default_name}_{media_id}"
         
