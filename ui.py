@@ -37,11 +37,11 @@ class UserInterface:
         ))
     
     @staticmethod
-    def show_channels_table(dialogs: List[Dict[str, Any]]) -> List[int]:
-        """Muestra una tabla con los canales/grupos y permite selección múltiple"""
+    def show_channels_table(dialogs: List[Dict[str, Any]]) -> tuple[List[int], str]:
+        """Muestra una tabla con los canales/grupos y permite selección múltiple. Retorna (indices, action)."""
         if not dialogs:
             console.print("[yellow]⚠️  No se encontraron canales o grupos[/yellow]")
-            return []
+            return [], 'exit'
         
         # Crear tabla
         table = Table(title="📺 Canales y Grupos Disponibles")
@@ -73,25 +73,30 @@ class UserInterface:
         console.print("\n[bold]📋 Selección de Canales[/bold]")
         console.print("[dim]Ingresa los números de los canales que deseas incluir en la búsqueda[/dim]")
         console.print("[dim]Ejemplo: 1,3,5-8,10 (separados por comas, rangos con guión)[/dim]")
+        console.print("[dim]Escribe 'exit' para salir de la aplicación[/dim]")
         
         while True:
             try:
                 selection_input = Prompt.ask("🎯 Selecciona canales", default="all")
+                selection_input = selection_input.lower().strip()
                 
-                if selection_input.lower() == "all":
-                    return list(range(len(dialogs)))
+                if selection_input == "exit":
+                    return [], 'exit'
+                
+                if selection_input == "all":
+                    return list(range(len(dialogs))), 'continue'
                 
                 selected_indices = UserInterface._parse_selection(selection_input, len(dialogs))
                 
                 if selected_indices:
                     console.print(f"[green]✅ Seleccionados {len(selected_indices)} canales[/green]")
-                    return selected_indices
+                    return selected_indices, 'continue'
                 else:
                     console.print("[red]❌ Selección inválida. Intenta nuevamente[/red]")
                     
             except KeyboardInterrupt:
                 console.print("\n[yellow]⚠️  Operación cancelada[/yellow]")
-                return []
+                return [], 'back'
     
     @staticmethod
     def _parse_selection(selection: str, max_index: int) -> List[int]:
@@ -119,15 +124,20 @@ class UserInterface:
             return []
     
     @staticmethod
-    def get_search_keyword() -> str:
-        """Solicita la palabra clave para búsqueda"""
+    def get_search_keyword() -> tuple[str, str]:
+        """Solicita la palabra clave para búsqueda. Retorna (keyword, action)."""
         console.print("\n[bold]🔍 Búsqueda de Videos[/bold]")
+        console.print("[dim]Escribe 'back' para volver a la selección de canales[/dim]")
         
         while True:
             keyword = Prompt.ask("📝 Ingresa la palabra clave para buscar", default="")
+            keyword = keyword.strip()
             
-            if keyword.strip():
-                return keyword.strip()
+            if keyword.lower() == 'back':
+                return '', 'back'
+            
+            if keyword:
+                return keyword, 'continue'
             else:
                 console.print("[red]❌ Debes ingresar una palabra clave[/red]")
     
@@ -196,6 +206,7 @@ class UserInterface:
         console.print("[dim]  • 'next' - ver siguiente página[/dim]")
         console.print("[dim]  • 'prev' - ver página anterior[/dim]")
         console.print("[dim]  • 'page N' - ir a página específica[/dim]")
+        console.print("[dim]  • 'back' - volver a la búsqueda (cambiar palabra clave)[/dim]")
         
         while True:
             try:
@@ -205,6 +216,10 @@ class UserInterface:
                     return [], False
                 
                 selection_input = selection_input.lower().strip()
+                
+                # Opción para volver atrás
+                if selection_input == 'back':
+                    return [], 'back'
                 
                 # Opciones de navegación
                 if selection_input == 'next' and has_more:
