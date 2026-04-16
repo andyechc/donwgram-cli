@@ -15,9 +15,13 @@ console = Console()
 class VideoDownloader:
     """Clase para manejar la descarga de videos con organización y progreso"""
     
-    def __init__(self, downloads_folder: str = "downloads"):
-        self.base_downloads_folder = Path(downloads_folder)  # Carpeta base (downloads)
-        self.downloads_folder = self.base_downloads_folder / "Downgram"  # Carpeta por defecto
+    def __init__(self, downloads_folder: str = None):
+        # Carpeta por defecto: ~/Downloads/Downgram/
+        if downloads_folder is None:
+            self.downloads_folder = Path.home() / "Downloads" / "Downgram"
+        else:
+            self.downloads_folder = Path(downloads_folder)
+        self.default_folder = self.downloads_folder  # Guardar referencia a la carpeta por defecto
         self.custom_folder = None  # Carpeta personalizada si se selecciona
         self.downloaded_count = 0
         self.failed_count = 0
@@ -28,9 +32,9 @@ class VideoDownloader:
         self.downloads_folder = self.custom_folder
     
     def reset_to_default_folder(self):
-        """Restablece la carpeta de descarga a la por defecto (Downgram)"""
+        """Restablece la carpeta de descarga a la por defecto (~/Downloads/Downgram/)"""
         self.custom_folder = None
-        self.downloads_folder = self.base_downloads_folder / "Downgram"
+        self.downloads_folder = self.default_folder
         
     def ensure_downloads_folder(self):
         """Asegura que la carpeta de descargas exista"""

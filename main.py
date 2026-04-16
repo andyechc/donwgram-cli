@@ -26,7 +26,7 @@ class DowngramCLI:
         self.config = Config()
         self.telegram_manager: Optional[TelegramManager] = None
         self.ui = UserInterface()
-        self.downloader = VideoDownloader(self.config.downloads_folder)
+        self.downloader = VideoDownloader()  # Usar carpeta por defecto ~/Downloads/Downgram/
         self.is_running = False
     
     def setup_signal_handlers(self):
@@ -55,14 +55,11 @@ class DowngramCLI:
                 self.ui.show_error("Credenciales inválidas. Verifica tu archivo .env")
                 return
             
-            # 3. Crear carpeta de descargas
-            self.downloader.ensure_downloads_folder()
-            
-            # 4. Conectar a Telegram
+            # 3. Conectar a Telegram
             if not await self._connect_to_telegram():
                 return
             
-            # 5. Ejecutar flujo principal
+            # 4. Ejecutar flujo principal
             await self._run_main_flow()
             
         except KeyboardInterrupt:
@@ -70,7 +67,7 @@ class DowngramCLI:
         except Exception as e:
             self.ui.show_error(f"Error inesperado: {str(e)}", "Error Crítico")
         finally:
-            # 6. Desconectar de Telegram
+            # 5. Desconectar de Telegram
             await self._cleanup()
     
     async def _connect_to_telegram(self) -> bool:
@@ -115,8 +112,21 @@ class DowngramCLI:
                     
                     if not dialogs:
                         self.ui.show_error("No se encontraron canales o grupos disponibles")
-                        # En caso de error, preguntar si quiere salir o reintentar
-                        if not self.ui.confirm_action("¿Deseas intentar nuevamente?"):
+                        
+                        # Menú de error con flechas
+                        error_choices = [
+                            "🔄 Intentar nuevamente",
+                            "❌ Salir de la aplicación"
+                        ]
+                        
+                        error_action = self.ui.select_with_arrows(
+                            "¿Qué deseas hacer?",
+                            error_choices,
+                            default="🔄 Intentar nuevamente",
+                            allow_exit=False
+                        )
+                        
+                        if error_action == "exit" or error_action == "❌ Salir de la aplicación":
                             break
                         continue
                     
@@ -155,6 +165,10 @@ class DowngramCLI:
                 if current_state == 'keyword':
                     keyword, action = self.ui.get_search_keyword()
                     
+                    if action == 'exit':
+                        # Salir de la aplicación
+                        break
+                    
                     if action == 'back':
                         # Volver a selección de canales
                         current_state = 'channels'
@@ -171,6 +185,10 @@ class DowngramCLI:
                         selected_entities, keyword, all_selected_media
                     )
                     
+                    if search_success == 'exit':
+                        # Salir de la aplicación
+                        break
+                    
                     if search_success == 'back':
                         # Volver a la búsqueda (cambiar palabra clave)
                         current_state = 'keyword'
@@ -182,9 +200,23 @@ class DowngramCLI:
                         continue
                     
                     if not all_selected_media:
-                        # No seleccionó archivos, preguntar qué hacer
-                        if not self.ui.confirm_action("¿Deseas realizar otra búsqueda?"):
-                            # Volver al menú principal
+                        # No seleccionó archivos, preguntar qué hacer con menú de flechas
+                        menu_choices = [
+                            "🔍 Realizar otra búsqueda",
+                            "🏠 Volver al menú principal",
+                            "❌ Salir"
+                        ]
+                        
+                        next_action = self.ui.select_with_arrows(
+                            "No seleccionaste archivos. ¿Qué deseas hacer?",
+                            menu_choices,
+                            default="🔍 Realizar otra búsqueda",
+                            allow_exit=False
+                        )
+                        
+                        if next_action == "exit" or next_action == "❌ Salir":
+                            break
+                        elif next_action == "🏠 Volver al menú principal":
                             current_state = 'menu'
                         else:
                             # Volver a la búsqueda con misma palabra clave
@@ -199,6 +231,10 @@ class DowngramCLI:
                     # Preguntar por la carpeta de descarga antes de comenzar
                     default_folder = str(self.downloader.downloads_folder)
                     custom_folder = self.ui.select_download_folder(default_folder)
+                    
+                    # Si el usuario eligió salir en el selector de carpetas
+                    if custom_folder == "exit":
+                        break
                     
                     if custom_folder:
                         self.downloader.set_custom_download_folder(custom_folder)
@@ -217,23 +253,27 @@ class DowngramCLI:
                     # Mostrar resumen final
                     self.ui.show_completion_message(
                         download_results['downloaded'],
-                        len(all_selected_media)
+                        len(all_selected_media),
+                        str(self.downloader.get_download_folder())
                     )
                     
-                    # Preguntar qué hacer después de descargar
-                    console.print("\n[bold]¿Qué deseas hacer?[/bold]")
-                    console.print("[dim]  • 'menu' - Volver al menú principal[/dim]")
-                    console.print("[dim]  • 'search' - Realizar otra búsqueda (mismos canales)[/dim]")
-                    console.print("[dim]  • 'exit' - Salir de la aplicación[/dim]")
+                    # Menú post-descarga con flechas
+                    menu_choices = [
+                        "🏠 Volver al menú principal",
+                        "🔍 Realizar otra búsqueda (mismos canales)",
+                        "❌ Salir de la aplicación"
+                    ]
                     
-                    next_action = Prompt.ask(
-                        "Selecciona opción",
-                        default="menu"
-                    ).lower().strip()
+                    next_action = self.ui.select_with_arrows(
+                        "¿Qué deseas hacer ahora?",
+                        menu_choices,
+                        default="🏠 Volver al menú principal",
+                        allow_exit=False
+                    )
                     
-                    if next_action == 'exit':
+                    if next_action == "exit" or next_action == "❌ Salir de la aplicación":
                         break
-                    elif next_action == 'search':
+                    elif next_action == "🔍 Realizar otra búsqueda (mismos canales)":
                         all_selected_media = []
                         current_state = 'keyword'
                     else:
@@ -248,11 +288,33 @@ class DowngramCLI:
                     
             except Exception as e:
                 self.ui.show_error(f"Error en el flujo principal: {str(e)}")
-                if not self.ui.confirm_action("¿Deseas intentar nuevamente?"):
+                
+                # Menú de error con flechas
+                error_choices = [
+                    "🔄 Intentar nuevamente",
+                    "🏠 Volver al menú principal",
+                    "❌ Salir de la aplicación"
+                ]
+                
+                error_action = self.ui.select_with_arrows(
+                    "¿Qué deseas hacer?",
+                    error_choices,
+                    default="🔄 Intentar nuevamente",
+                    allow_exit=False
+                )
+                
+                if error_action == "exit" or error_action == "❌ Salir de la aplicación":
                     break
+                elif error_action == "🏠 Volver al menú principal":
+                    current_state = 'menu'
+                    all_selected_media = []
+                    selected_entities = None
+                    selected_channel_names = None
+                    keyword = None
+                # Si intentar nuevamente, continúa el loop
     
     async def _handle_search_and_selection(self, selected_entities, keyword, all_selected_media):
-        """Maneja la búsqueda y selección de media con paginación. Retorna 'back', 'menu', o True."""
+        """Maneja la búsqueda y selección de media con paginación. Retorna 'back', 'exit', o True."""
         current_page = 0
         
         while True:
@@ -266,6 +328,10 @@ class DowngramCLI:
             
             # Mostrar resultados y selección
             selected_media_indices, navigation_action = self.ui.show_search_results(search_result)
+            
+            # Manejar opción de salir
+            if navigation_action == 'exit':
+                return 'exit'
             
             # Manejar opción de volver atrás
             if navigation_action == 'back':
@@ -291,32 +357,65 @@ class DowngramCLI:
                 
                 # Preguntar si desea seleccionar más media de otras páginas
                 if search_result['total_pages'] > 1:
-                    if self.ui.confirm_action("¿Deseas seleccionar archivos de otras páginas?"):
-                        # Permitir navegar a otras páginas
-                        nav_choice = Prompt.ask(
-                            "📍 Navegar a: [next/prev/page N/finish/back]",
-                            default="finish"
-                        ).lower().strip()
+                    menu_choices = [
+                        "📄 Seleccionar más archivos de otras páginas",
+                        "✅ Finalizar selección e ir a descargar",
+                        "🔍 Volver a buscar (descartar selección)",
+                        "❌ Salir"
+                    ]
+                    
+                    nav_action = self.ui.select_with_arrows(
+                        f"Tienes {len(all_selected_media)} archivos seleccionados. ¿Qué deseas hacer?",
+                        menu_choices,
+                        default="✅ Finalizar selección e ir a descargar",
+                        allow_exit=False
+                    )
+                    
+                    if nav_action == "exit" or nav_action == "❌ Salir":
+                        return 'exit'
+                    
+                    if nav_action == "🔍 Volver a buscar (descartar selección)":
+                        all_selected_media.clear()
+                        return 'back'
+                    
+                    if nav_action == "📄 Seleccionar más archivos de otras páginas":
+                        # Submenú de navegación
+                        nav_choices = []
+                        if current_page < search_result['total_pages'] - 1:
+                            nav_choices.append("➡️  Siguiente página")
+                        if current_page > 0:
+                            nav_choices.append("⬅️  Página anterior")
+                        if search_result['total_pages'] > 1:
+                            nav_choices.append(f"📄 Ir a página específica (1-{search_result['total_pages']})")
+                        nav_choices.extend([
+                            "❌ Cancelar"
+                        ])
                         
-                        if nav_choice == 'back':
-                            # Volver a la búsqueda (sin guardar selección actual)
-                            all_selected_media.clear()
-                            return 'back'
-                        elif nav_choice == 'next' and current_page < search_result['total_pages'] - 1:
+                        page_nav = self.ui.select_with_arrows(
+                            "¿A qué página deseas ir?",
+                            nav_choices,
+                            allow_exit=False
+                        )
+                        
+                        if page_nav == "➡️  Siguiente página" and current_page < search_result['total_pages'] - 1:
                             current_page += 1
                             continue
-                        elif nav_choice == 'prev' and current_page > 0:
+                        elif page_nav == "⬅️  Página anterior" and current_page > 0:
                             current_page -= 1
                             continue
-                        elif nav_choice.startswith('page '):
+                        elif page_nav == f"📄 Ir a página específica (1-{search_result['total_pages']})":
                             try:
-                                page_num = int(nav_choice.split(' ')[1]) - 1
-                                if 0 <= page_num < search_result['total_pages']:
-                                    current_page = page_num
+                                from rich.prompt import IntPrompt
+                                page_num = IntPrompt.ask(f"Número de página (1-{search_result['total_pages']})", default=current_page + 1)
+                                if 1 <= page_num <= search_result['total_pages']:
+                                    current_page = page_num - 1
                                     continue
-                            except (ValueError, IndexError):
-                                console.print("[red]❌ Página inválida[/red]")
-                        # Si no quiere navegar más, salir del bucle
+                            except:
+                                pass
+                        # Si cancela, continúa con el bucle
+                        continue
+                    
+                    # Si finaliza, sale del bucle
             
             # Salir del bucle de paginación
             return True

@@ -7,11 +7,15 @@ Una herramienta CLI interactiva desarrollada en Python que permite filtrar y des
 - 🔍 **Búsqueda inteligente**: Busca videos por palabras clave en múltiples canales
 - 📺 **Selección múltiple**: Elige varios canales/grupos para crear un pool de búsqueda
 - 🎯 **Selección manual**: Selecciona específicamente qué videos descargar de los resultados
-- 📊 **Interfaz visual bonita**: Tablas, paneles y barras de progreso con Rich
+- � **Paginación**: Navega por resultados de búsqueda en múltiples páginas
+- 🖱️ **Menús interactivos**: Navegación intuitiva con flechas usando inquirer
+- � **Interfaz visual bonita**: Tablas, paneles y barras de progreso con Rich
 - 📁 **Organización automática**: Videos organizados por carpetas de canal
+- 📂 **Carpeta personalizable**: Selector nativo de carpetas (macOS) o ruta manual
 - ⚡ **Descarga con progreso**: Barras de progreso reales con velocidad y tamaño
 - 🔄 **Sesión persistente**: No necesitas ingresar código SMS en cada ejecución
 - 🛡️ **Manejo de errores**: Gestión de FloodWaitError y otros errores comunes
+- ⬅️ **Navegación flexible**: Volver atrás, ir al menú o salir en cualquier paso
 
 ## 📋 Requisitos
 
@@ -87,15 +91,25 @@ python main.py
 ### Flujo de uso
 
 1. **Conexión inicial**: La primera vez te pedirá el código SMS de Telegram
-2. **Selección de canales**: Se mostrará una tabla con tus canales/grupos recientes
-   - Usa números individuales: `1,3,5`
-   - Usa rangos: `5-8`
-   - Selecciona todos: `all`
+2. **Selección de canales**: Menú interactivo con tus canales/grupos recientes
+   - Navega con las **flechas** y presiona **Enter** para seleccionar
+   - Selecciona múltiples canales marcándolos con **Espacio**
+   - Presiona **Enter** para continuar
+   - Opciones: `Volver atrás` o `Salir`
 3. **Búsqueda**: Ingresa una palabra clave para buscar videos
-4. **Resultados**: Revisa la tabla de videos encontrados
-5. **Selección de videos**: Elige qué videos específicos descargar
+   - Opciones: `Volver atrás` (cambiar canales) o `Salir`
+4. **Resultados**: Tabla de videos encontrados con paginación
+   - Navega entre páginas con opciones interactivas
+   - Selecciona videos específicos o todos los de la página
+   - **Acumula selecciones** de múltiples páginas
+   - Opciones: `Siguiente página`, `Página anterior`, `Ir a página específica`
+5. **Selección de descarga**: Elige la carpeta de destino
+   - **macOS**: Selector nativo de carpetas del Finder
+   - **Otras plataformas**: Ingresa la ruta manualmente
+   - Por defecto: `~/Downloads/Downgram/`
 6. **Descarga**: Observa el progreso de descarga en tiempo real
-7. **Organización**: Los videos se guardarán en `downloads/nombre_del_canal/`
+7. **Organización**: Los videos se guardan en `carpeta_seleccionada/nombre_del_canal/`
+8. **Menú post-descarga**: Volver al menú, nueva búsqueda o salir
 
 ## 📁 Estructura del Proyecto
 
@@ -104,13 +118,14 @@ downgram-cli/
 ├── main.py              # Script principal y punto de entrada
 ├── config.py            # Gestión de configuración y variables de entorno
 ├── telegram_client.py   # Conexión y operaciones con Telegram (Telethon)
-├── ui.py               # Interfaz de usuario (Rich)
-├── downloader.py       # Gestión de descargas y organización de archivos
-├── requirements.txt    # Dependencias de Python
-├── .env.example       # Plantilla de configuración
-├── .env               # Tu configuración personal (no compartir)
-├── downloads/         # Carpeta donde se guardan los videos (creada automáticamente)
-└── telegram_session.session  # Sesión de Telegram (creada automáticamente)
+├── ui.py                # Interfaz de usuario (Rich + inquirer)
+├── downloader.py        # Gestión de descargas y organización de archivos
+├── requirements.txt     # Dependencias de Python
+├── .env.example        # Plantilla de configuración
+├── .env                # Tu configuración personal (no compartir)
+├── telegram_session.session   # Sesión de Telegram (creada automáticamente)
+└── ~/Downloads/Downgram/      # Carpeta de descargas por defecto (creada automáticamente)
+    └── nombre_del_canal/      # Videos organizados por canal
 ```
 
 ## 🔧 Características Técnicas
@@ -119,9 +134,9 @@ downgram-cli/
 
 - **config.py**: Maneja variables de entorno y configuración inicial
 - **telegram_client.py**: Encapsula toda la interacción con la API de Telegram
-- **ui.py**: Proporciona una interfaz rica con tablas y selección interactiva
-- **downloader.py**: Gestiona descargas con progreso y organización de archivos
-- **main.py**: Orquesta el flujo completo de la aplicación
+- **ui.py**: Interfaz rica con tablas, menús interactivos con inquirer y selector nativo de carpetas
+- **downloader.py**: Gestiona descargas con progreso, organización por canal y carpetas personalizadas
+- **main.py**: Orquesta el flujo completo con navegación entre pasos
 
 ### Manejo de Errores
 
@@ -133,30 +148,54 @@ downgram-cli/
 ### Optimizaciones
 
 - **Sesión persistente**: Archivo de sesión para evitar autenticación repetida
+- **Paginación**: Resultados de búsqueda paginados para mejor rendimiento
+- **Selección múltiple de páginas**: Acumula videos de diferentes páginas antes de descargar
 - **Límites de API**: Distribución inteligente de límites entre múltiples canales
 - **Concurrencia**: Operaciones asíncronas para mejor rendimiento
 - **Memoria**: Gestión eficiente de resultados de búsqueda
+- **Navegación intuitiva**: Menús con flechas (inquirer) en lugar de input de texto
 
 ## 🎯 Ejemplos de Uso
 
-### Búsqueda básica
-```
-📝 Ingresa la palabra clave para buscar: tutorial
-```
-
-### Selección de canales
-```
-🎯 Selecciona canales: 1,3,5-8
+### Iniciar la aplicación
+```bash
+python main.py
 ```
 
-### Selección de videos
+### Navegación con menús interactivos
 ```
-🎯 Selecciona videos: 2,5,7
+? ¿Qué deseas hacer? (Use arrow keys)
+ ❯ 🔍 Realizar otra búsqueda
+   🏠 Volver al menú principal
+   ❌ Salir de la aplicación
 ```
 
-### Descargar todos los videos
+### Selección de canales (con flechas)
 ```
-🎯 Selecciona videos: all
+? Selecciona los canales/grupos a buscar: (Press <space> to select, <a> to toggle all, <i> to invert selection)
+ ❯◉ Canal de Tutoriales Python
+  ◉ Grupo de Videos Musicales
+  ○ Canal de Noticias Tech
+  ◉ Grupo de Memes
+```
+
+### Búsqueda con paginación
+```
+Página 2/5 - Mostrando videos 11-20 de 47
+
+? ¿Qué deseas hacer? (Use arrow keys)
+ ❯ 📄 Seleccionar más archivos de otras páginas
+   ✅ Finalizar selección e ir a descargar
+   🔍 Volver a buscar (descartar selección)
+   ❌ Salir
+```
+
+### Selección de carpeta de descarga (macOS)
+```
+? ¿Dónde deseas guardar los videos? (Use arrow keys)
+ ❯ 📂 Usar carpeta por defecto: ~/Downloads/Downgram
+   📁 Seleccionar otra carpeta (abrir Finder)
+   ⬅️  Volver atrás
 ```
 
 ## 🛠️ Solución de Problemas
@@ -215,4 +254,4 @@ Si encounteras problemas:
 
 ---
 
-**Desarrollado con ❤️ usando Python, Telethon y Rich** | **Downgram CLI**
+**Desarrollado con ❤️ usando Python, Telethon, Rich e Inquirer** | **Downgram CLI**
